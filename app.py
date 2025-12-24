@@ -118,13 +118,13 @@ def get_available_periods_cached():
     try:
         try:
             result = supabase.table('v_distinct_donem').select('envanter_donemi').execute()
-        except:
+        except Exception:
             result = supabase.table('envanter_veri').select('envanter_donemi').limit(1000).execute()
         
         if result.data:
             periods = list(set([r['envanter_donemi'] for r in result.data if r.get('envanter_donemi')]))
             return sorted(periods, reverse=True)
-    except:
+    except Exception:
         pass
     return []
 
@@ -134,13 +134,13 @@ def get_available_sms_cached():
     try:
         try:
             result = supabase.table('v_distinct_sm').select('satis_muduru').execute()
-        except:
+        except Exception:
             result = supabase.table('envanter_veri').select('satis_muduru').limit(1000).execute()
         
         if result.data:
             sms = list(set([r['satis_muduru'] for r in result.data if r.get('satis_muduru')]))
             return sorted(sms)
-    except:
+    except Exception:
         pass
     return []
 
@@ -266,9 +266,6 @@ if analysis_mode in ["SM_OZET", "BS_OZET", "GM_OZET"]:
         )
         
         if df_view is not None and len(df_view) > 0:
-            # Debug: Kolonları göster (sorun çözülünce kaldır)
-            # st.write("Kolonlar:", df_view.columns.tolist())
-            
             # Risk dağılımı
             col1, col2, col3, col4 = st.columns(4)
             
@@ -395,7 +392,7 @@ elif analysis_mode == "PARCALI":
                 try:
                     internal_enriched = enrich_internal_theft_with_camera(internal_df, magaza_kodu, envanter_tarihi, df_analyzed)
                     st.dataframe(internal_enriched, use_container_width=True)
-                except:
+                except Exception:
                     st.dataframe(internal_df, use_container_width=True)
             else:
                 st.success("✅ İç hırsızlık şüphesi yok")
