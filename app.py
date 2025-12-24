@@ -301,7 +301,7 @@ if analysis_mode in ["SM_OZET", "BS_OZET", "GM_OZET"]:
             display_cols = [c for c in display_cols if c in df_view.columns]
             
             st.dataframe(
-                df_view[display_cols].sort_values('Risk Puan', ascending=False),
+               df_view[display_cols].sort_values('Risk Puan' if 'Risk Puan' in df_view.columns else 'Toplam %', ascending=False),
                 use_container_width=True,
                 height=400
             )
