@@ -309,7 +309,7 @@ if analysis_mode in ["SM_OZET", "BS_OZET", "GM_OZET"]:
             
             if sort_col:
                 st.dataframe(
-                    df_view[display_cols].sort_values(sort_col, ascending=False),
+                    df_view.sort_values(sort_col, ascending=False)[display_cols],
                     use_container_width=True,
                     height=400
                 )
