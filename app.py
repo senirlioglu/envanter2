@@ -1,6 +1,6 @@
 # ==================== ENVANTER RİSK ANALİZİ ====================
 # Ana Uygulama - Modüler Yapı
-# v2.0 - Refactored
+# v2.1 - Fixed
 
 import streamlit as st
 import pandas as pd
@@ -265,13 +265,21 @@ if analysis_mode in ["SM_OZET", "BS_OZET", "GM_OZET"]:
             donemler=selected_periods
         )
         
-        if len(df_view) > 0:
+        if df_view is not None and len(df_view) > 0:
+            # Debug: Kolonları göster (sorun çözülünce kaldır)
+            # st.write("Kolonlar:", df_view.columns.tolist())
+            
             # Risk dağılımı
             col1, col2, col3, col4 = st.columns(4)
-            kritik = len(df_view[df_view['Risk'].str.contains('KRİTİK', na=False)])
-            riskli = len(df_view[df_view['Risk'].str.contains('RİSKLİ', na=False)])
-            dikkat = len(df_view[df_view['Risk'].str.contains('DİKKAT', na=False)])
-            temiz = len(df_view[df_view['Risk'].str.contains('TEMİZ', na=False)])
+            
+            # Risk kolonu var mı kontrol et
+            if 'Risk' in df_view.columns:
+                kritik = len(df_view[df_view['Risk'].str.contains('KRİTİK', na=False)])
+                riskli = len(df_view[df_view['Risk'].str.contains('RİSKLİ', na=False)])
+                dikkat = len(df_view[df_view['Risk'].str.contains('DİKKAT', na=False)])
+                temiz = len(df_view[df_view['Risk'].str.contains('TEMİZ', na=False)])
+            else:
+                kritik = riskli = dikkat = temiz = 0
             
             col1.metric("🔴 KRİTİK", kritik)
             col2.metric("🟠 RİSKLİ", riskli)
@@ -279,15 +287,13 @@ if analysis_mode in ["SM_OZET", "BS_OZET", "GM_OZET"]:
             col4.metric("🟢 TEMİZ", temiz)
             
             # Gruplama
-            if analysis_mode == "GM_OZET":
-                # SM bazlı gruplama
+            if analysis_mode == "GM_OZET" and 'Satış Müdürü' in df_view.columns:
                 sm_grouped = aggregate_by_group(df_view, 'Satış Müdürü')
                 if len(sm_grouped) > 0:
                     st.subheader("👔 SM Bazlı")
                     st.dataframe(sm_grouped, use_container_width=True)
             
-            if analysis_mode in ["GM_OZET", "BS_OZET"]:
-                # BS bazlı gruplama
+            if analysis_mode in ["GM_OZET", "BS_OZET"] and 'BS' in df_view.columns:
                 bs_grouped = aggregate_by_group(df_view, 'BS')
                 if len(bs_grouped) > 0:
                     st.subheader("👥 BS Bazlı")
@@ -296,46 +302,54 @@ if analysis_mode in ["SM_OZET", "BS_OZET", "GM_OZET"]:
             # Mağaza listesi
             st.subheader("🏪 Mağazalar")
             
-            display_cols = ['Mağaza Kodu', 'Mağaza Adı', 'Satış', 'Fark', 'Fire', 'Toplam %', 
-                           'İç Hırs.', 'Kronik', 'Sigara', 'Risk', 'Risk Nedenleri']
-            display_cols = [c for c in display_cols if c in df_view.columns]
+            # Mevcut kolonları filtrele
+            all_possible_cols = ['Mağaza Kodu', 'Mağaza Adı', 'Satış', 'Fark', 'Fire', 'Toplam %', 
+                                'İç Hırs.', 'Kronik', 'Sigara', 'Risk', 'Risk Nedenleri', 'Risk Puan',
+                                'toplam_satis', 'toplam_fark', 'toplam_fire', 'risk_puan']
+            display_cols = [c for c in all_possible_cols if c in df_view.columns]
             
-           # Sıralama için mevcut kolon bul
+            # Eğer hiç kolon bulunamadıysa tüm kolonları göster
+            if len(display_cols) == 0:
+                display_cols = df_view.columns.tolist()
+            
+            # Sıralama kolonu bul
             sort_col = None
-            for col in ['Risk Puan', 'Toplam %', 'Fark']:
+            for col in ['Risk Puan', 'risk_puan', 'Toplam %', 'toplam_oran', 'Fark', 'toplam_fark']:
                 if col in df_view.columns:
                     sort_col = col
                     break
             
-            if sort_col:
-                st.dataframe(
-                    df_view[display_cols].sort_values(sort_col, ascending=False),
-                    use_container_width=True,
-                    height=400
-                )
-            else:
-                st.dataframe(
-                    df_view[display_cols],
-                    use_container_width=True,
-                    height=400
-                )
+            # DataFrame göster
+            try:
+                if sort_col and sort_col in df_view.columns:
+                    display_df = df_view[display_cols].sort_values(sort_col, ascending=False)
+                else:
+                    display_df = df_view[display_cols]
+                
+                st.dataframe(display_df, use_container_width=True, height=400)
+            except Exception as e:
+                st.error(f"Tablo gösterim hatası: {e}")
+                st.dataframe(df_view, use_container_width=True, height=400)
             
             # Excel indirme
             if analysis_mode == "GM_OZET":
-                sm_grouped = aggregate_by_group(df_view, 'Satış Müdürü') if 'Satış Müdürü' in df_view.columns else pd.DataFrame()
-                bs_grouped = aggregate_by_group(df_view, 'BS') if 'BS' in df_view.columns else pd.DataFrame()
-                
-                excel_data = create_gm_excel_report(
-                    df_view, sm_grouped, bs_grouped,
-                    {'donem': ', '.join(selected_periods)}
-                )
-                
-                st.download_button(
-                    "📥 Excel İndir",
-                    data=excel_data,
-                    file_name=f"GM_Dashboard_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+                try:
+                    sm_grouped = aggregate_by_group(df_view, 'Satış Müdürü') if 'Satış Müdürü' in df_view.columns else pd.DataFrame()
+                    bs_grouped = aggregate_by_group(df_view, 'BS') if 'BS' in df_view.columns else pd.DataFrame()
+                    
+                    excel_data = create_gm_excel_report(
+                        df_view, sm_grouped, bs_grouped,
+                        {'donem': ', '.join(selected_periods)}
+                    )
+                    
+                    st.download_button(
+                        "📥 Excel İndir",
+                        data=excel_data,
+                        file_name=f"GM_Dashboard_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                except Exception as e:
+                    st.error(f"Excel oluşturma hatası: {e}")
         else:
             st.info("📭 Seçilen kriterlere uygun veri bulunamadı.")
     else:
@@ -377,10 +391,12 @@ elif analysis_mode == "PARCALI":
         
         with tabs[0]:
             if len(internal_df) > 0:
-                # Kamera entegrasyonu
                 envanter_tarihi = df_analyzed['Envanter Tarihi'].iloc[0] if 'Envanter Tarihi' in df_analyzed.columns else datetime.now()
-                internal_enriched = enrich_internal_theft_with_camera(internal_df, magaza_kodu, envanter_tarihi, df_analyzed)
-                st.dataframe(internal_enriched, use_container_width=True)
+                try:
+                    internal_enriched = enrich_internal_theft_with_camera(internal_df, magaza_kodu, envanter_tarihi, df_analyzed)
+                    st.dataframe(internal_enriched, use_container_width=True)
+                except:
+                    st.dataframe(internal_df, use_container_width=True)
             else:
                 st.success("✅ İç hırsızlık şüphesi yok")
         
@@ -404,32 +420,35 @@ elif analysis_mode == "PARCALI":
         
         with tabs[4]:
             if len(kasa_df) > 0:
-                st.markdown(f"**Toplam:** {kasa_summary['toplam_adet']:.0f} adet, {kasa_summary['toplam_tutar']:,.0f} TL")
+                st.markdown(f"**Toplam:** {kasa_summary.get('toplam_adet', 0):.0f} adet, {kasa_summary.get('toplam_tutar', 0):,.0f} TL")
                 st.dataframe(kasa_df, use_container_width=True)
             else:
                 st.success("✅ 10TL ürünlerinde sorun yok")
         
         # Excel indirme
-        internal_codes = set(internal_df['Malzeme Kodu'].astype(str).tolist()) if len(internal_df) > 0 else set()
-        chronic_codes = set(chronic_df['Malzeme Kodu'].astype(str).tolist()) if len(chronic_df) > 0 else set()
-        family_balanced = set()
-        
-        top20_df = create_top_20_risky(df_analyzed, internal_codes, chronic_codes, family_balanced)
-        exec_comments, group_stats = generate_executive_summary(df_analyzed, kasa_df, kasa_summary)
-        
-        excel_output = create_excel_report(
-            df_analyzed, internal_df, chronic_df, chronic_fire_df, cigarette_df,
-            external_df, family_df, fire_manip_df, kasa_df, top20_df,
-            exec_comments, group_stats, magaza_kodu, magaza_adi,
-            {'donem': '', 'tarih': datetime.now().strftime('%Y-%m-%d')}
-        )
-        
-        st.download_button(
-            "📥 Excel Rapor İndir",
-            data=excel_output,
-            file_name=f"Envanter_{magaza_kodu}_{datetime.now().strftime('%Y%m%d')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        try:
+            internal_codes = set(internal_df['Malzeme Kodu'].astype(str).tolist()) if len(internal_df) > 0 else set()
+            chronic_codes = set(chronic_df['Malzeme Kodu'].astype(str).tolist()) if len(chronic_df) > 0 else set()
+            family_balanced = set()
+            
+            top20_df = create_top_20_risky(df_analyzed, internal_codes, chronic_codes, family_balanced)
+            exec_comments, group_stats = generate_executive_summary(df_analyzed, kasa_df, kasa_summary)
+            
+            excel_output = create_excel_report(
+                df_analyzed, internal_df, chronic_df, chronic_fire_df, cigarette_df,
+                external_df, family_df, fire_manip_df, kasa_df, top20_df,
+                exec_comments, group_stats, magaza_kodu, magaza_adi,
+                {'donem': '', 'tarih': datetime.now().strftime('%Y-%m-%d')}
+            )
+            
+            st.download_button(
+                "📥 Excel Rapor İndir",
+                data=excel_output,
+                file_name=f"Envanter_{magaza_kodu}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        except Exception as e:
+            st.error(f"Excel oluşturma hatası: {e}")
     else:
         st.info("📁 Parçalı envanter dosyası yükleyin veya Supabase'den mağaza seçin.")
 
@@ -444,66 +463,66 @@ elif analysis_mode == "SUREKLI":
     if 'df_surekli' in st.session_state:
         df_raw = st.session_state['df_surekli']
         
-        # Veriyi hazırla
-        df_prepared = prepare_surekli_data(df_raw)
-        
-        # Mağaza bilgisi
-        magaza_kodu = df_prepared['Mağaza Kodu'].iloc[0] if 'Mağaza Kodu' in df_prepared.columns else 'Bilinmiyor'
-        magaza_adi = df_prepared['Mağaza Adı'].iloc[0] if 'Mağaza Adı' in df_prepared.columns else ''
-        
-        st.info(f"🏪 Mağaza: **{magaza_kodu}** - {magaza_adi}")
-        
-        # Analiz
-        analysis_result = analyze_surekli_envanter(df_prepared)
-        
-        # Özet metrikler
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Toplam Ürün", analysis_result.get('toplam_urun', 0))
-        col2.metric("Açık Ürün", analysis_result.get('acik_urun', 0))
-        col3.metric("Toplam Açık", f"{analysis_result.get('toplam_acik', 0):,.0f} TL")
-        col4.metric("Risk Seviyesi", analysis_result.get('risk_seviye', 'BELİRSİZ'))
-        
-        # İç Hırsızlık Analizi
-        st.subheader("🔒 İç Hırsızlık Analizi")
-        
-        df_onceki = analysis_result.get('df_onceki', pd.DataFrame())
-        ic_hirsizlik_df = detect_ic_hirsizlik_surekli(df_prepared, df_onceki)
-        
-        if len(ic_hirsizlik_df) > 0:
-            # Kamera entegrasyonu
-            def get_iptal_func(mag, kodlar):
-                return get_iptal_timestamps_for_magaza(mag, kodlar)
+        try:
+            df_prepared = prepare_surekli_data(df_raw)
             
-            ic_hirsizlik_enriched = enrich_with_camera_surekli(
-                ic_hirsizlik_df, get_iptal_func, magaza_kodu, df_prepared
-            )
+            magaza_kodu = df_prepared['Mağaza Kodu'].iloc[0] if 'Mağaza Kodu' in df_prepared.columns else 'Bilinmiyor'
+            magaza_adi = df_prepared['Mağaza Adı'].iloc[0] if 'Mağaza Adı' in df_prepared.columns else ''
             
-            st.dataframe(ic_hirsizlik_enriched, use_container_width=True)
+            st.info(f"🏪 Mağaza: **{magaza_kodu}** - {magaza_adi}")
             
-            # Excel indirme
-            excel_data = create_ic_hirsizlik_excel_surekli(ic_hirsizlik_enriched, magaza_kodu, magaza_adi)
-            st.download_button(
-                "📥 İç Hırsızlık Raporu İndir",
-                data=excel_data,
-                file_name=f"IcHirsizlik_{magaza_kodu}_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-        else:
-            st.success("✅ İç hırsızlık şüphesi tespit edilmedi")
-        
-        # Genel Excel raporu
-        st.subheader("📊 Detaylı Rapor")
-        excel_output = create_surekli_excel_report(df_prepared, analysis_result, magaza_kodu, magaza_adi)
-        
-        st.download_button(
-            "📥 Tam Rapor İndir",
-            data=excel_output,
-            file_name=f"SurekliEnvanter_{magaza_kodu}_{datetime.now().strftime('%Y%m%d')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+            analysis_result = analyze_surekli_envanter(df_prepared)
+            
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Toplam Ürün", analysis_result.get('toplam_urun', 0))
+            col2.metric("Açık Ürün", analysis_result.get('acik_urun', 0))
+            col3.metric("Toplam Açık", f"{analysis_result.get('toplam_acik', 0):,.0f} TL")
+            col4.metric("Risk Seviyesi", analysis_result.get('risk_seviye', 'BELİRSİZ'))
+            
+            st.subheader("🔒 İç Hırsızlık Analizi")
+            
+            df_onceki = analysis_result.get('df_onceki', pd.DataFrame())
+            ic_hirsizlik_df = detect_ic_hirsizlik_surekli(df_prepared, df_onceki)
+            
+            if len(ic_hirsizlik_df) > 0:
+                try:
+                    def get_iptal_func(mag, kodlar):
+                        return get_iptal_timestamps_for_magaza(mag, kodlar)
+                    
+                    ic_hirsizlik_enriched = enrich_with_camera_surekli(
+                        ic_hirsizlik_df, get_iptal_func, magaza_kodu, df_prepared
+                    )
+                    st.dataframe(ic_hirsizlik_enriched, use_container_width=True)
+                    
+                    excel_data = create_ic_hirsizlik_excel_surekli(ic_hirsizlik_enriched, magaza_kodu, magaza_adi)
+                    st.download_button(
+                        "📥 İç Hırsızlık Raporu İndir",
+                        data=excel_data,
+                        file_name=f"IcHirsizlik_{magaza_kodu}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                except Exception as e:
+                    st.dataframe(ic_hirsizlik_df, use_container_width=True)
+                    st.warning(f"Kamera entegrasyonu hatası: {e}")
+            else:
+                st.success("✅ İç hırsızlık şüphesi tespit edilmedi")
+            
+            st.subheader("📊 Detaylı Rapor")
+            try:
+                excel_output = create_surekli_excel_report(df_prepared, analysis_result, magaza_kodu, magaza_adi)
+                st.download_button(
+                    "📥 Tam Rapor İndir",
+                    data=excel_output,
+                    file_name=f"SurekliEnvanter_{magaza_kodu}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            except Exception as e:
+                st.error(f"Excel oluşturma hatası: {e}")
+        except Exception as e:
+            st.error(f"Veri işleme hatası: {e}")
     else:
         st.info("📁 Sürekli envanter dosyası yükleyin.")
 
 # ==================== FOOTER ====================
 st.markdown("---")
-st.caption("📊 Envanter Risk Analizi v2.0 | Modüler Yapı")
+st.caption("📊 Envanter Risk Analizi v2.1 | Modüler Yapı")
