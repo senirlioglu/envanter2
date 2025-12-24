@@ -300,11 +300,25 @@ if analysis_mode in ["SM_OZET", "BS_OZET", "GM_OZET"]:
                            'İç Hırs.', 'Kronik', 'Sigara', 'Risk', 'Risk Nedenleri']
             display_cols = [c for c in display_cols if c in df_view.columns]
             
-            st.dataframe(
-               df_view[display_cols].sort_values('Risk Puan' if 'Risk Puan' in df_view.columns else 'Toplam %', ascending=False),
-                use_container_width=True,
-                height=400
-            )
+           # Sıralama için mevcut kolon bul
+            sort_col = None
+            for col in ['Risk Puan', 'Toplam %', 'Fark']:
+                if col in df_view.columns:
+                    sort_col = col
+                    break
+            
+            if sort_col:
+                st.dataframe(
+                    df_view[display_cols].sort_values(sort_col, ascending=False),
+                    use_container_width=True,
+                    height=400
+                )
+            else:
+                st.dataframe(
+                    df_view[display_cols],
+                    use_container_width=True,
+                    height=400
+                )
             
             # Excel indirme
             if analysis_mode == "GM_OZET":
