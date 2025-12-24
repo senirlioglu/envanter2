@@ -300,8 +300,14 @@ if analysis_mode in ["SM_OZET", "BS_OZET", "GM_OZET"]:
                            'İç Hırs.', 'Kronik', 'Sigara', 'Risk', 'Risk Nedenleri']
             display_cols = [c for c in display_cols if c in df_view.columns]
             
+            # Sort by Risk Puan first (if exists), then select display columns
+            if 'Risk Puan' in df_view.columns:
+                df_sorted = df_view.sort_values('Risk Puan', ascending=False)
+            else:
+                df_sorted = df_view
+
             st.dataframe(
-                df_view[display_cols].sort_values('Risk Puan', ascending=False),
+                df_sorted[display_cols],
                 use_container_width=True,
                 height=400
             )
